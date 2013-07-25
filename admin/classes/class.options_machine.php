@@ -35,8 +35,7 @@ class Options_Machine {
 	 	- The ultimate objective of this function is to prevent the "undefined index"
 	 	  errors some authors are having due to malformed options array
 	 */
-	function sanitize_option( $value ) {
-
+	static function sanitize_option( $value ) {
 		$defaults = array(
 			"name" 		=> "",
 			"desc" 		=> "",
@@ -64,25 +63,35 @@ class Options_Machine {
 	 * @return array
 	 */
 	public static function optionsframework_machine($options) {
-		global $smof_output;
-	    $smof_data = of_get_options();
+		global $smof_output, $smof_details, $smof_data;
+		if (empty($options))
+			return;
+		if (empty($smof_data))
+			$smof_data = of_get_options();
 		$data = $smof_data;
 
 		$defaults = array();   
 	    $counter = 0;
 		$menu = '';
 		$output = '';
-		
+		$update_data = false;
+
 		do_action('optionsframework_machine_before', array(
 				'options'	=> $options,
 				'smof_data'	=> $smof_data,
 			));
-		$output .= $smof_output;
+		if ($smof_output != "") {
+			$output .= $smof_output;
+			$smof_output = "";
+		}
 		
+		
+
 		foreach ($options as $value) {
 			
 			// sanitize option
-			$value = self::sanitize_option($value);
+			if ($value['type'] != "heading")
+				$value = self::sanitize_option($value);
 
 			$counter++;
 			$val = '';
@@ -103,6 +112,18 @@ class Options_Machine {
 			/* condition start */
 			if(!empty($smof_data) || !empty($data)){
 			
+				if (array_key_exists('id', $value) && !isset($smof_data[$value['id']])) {
+					$smof_data[$value['id']] = $value['std'];
+					if ($value['type'] == "checkbox" && $value['std'] == 0) {
+						$smof_data[$value['id']] = 0;
+					} else {
+						$update_data = true;
+					}
+				}
+				if (array_key_exists('id', $value) && !isset($smof_details[$value['id']])) {
+					$smof_details[$value['id']] = $smof_data[$value['id']];
+				}
+
 			//Start Heading
 			 if ( $value['type'] != "heading" )
 			 {
@@ -111,7 +132,7 @@ class Options_Machine {
 				//hide items in checkbox group
 				$fold='';
 				if (array_key_exists("fold",$value)) {
-					if ($smof_data[$value['fold']]) {
+					if (isset($smof_data[$value['fold']]) && $smof_data[$value['fold']]) {
 						$fold="f_".$value['fold']." ";
 					} else {
 						$fold="f_".$value['fold']." temphide ";
@@ -127,6 +148,9 @@ class Options_Machine {
 	
 			 } 
 			 //End Heading
+
+			//if (!isset($smof_data[$value['id']]) && $value['type'] != "heading")
+			//	continue;
 			
 			//switch statement to handle various options type                              
 			switch ( $value['type'] ) {
@@ -155,7 +179,7 @@ class Options_Machine {
 						$theValue = $option;
 						if (!is_numeric($select_ID))
 							$theValue = $select_ID;
-						$output .= '<option id="' . $select_ID . '" value="'.$theValue.'" ' . selected($smof_data[$value['id']], $option, false) . ' />'.$option.'</option>';	 
+						$output .= '<option id="' . $select_ID . '" value="'.$theValue.'" ' . selected($smof_data[$value['id']], $theValue, false) . ' />'.$option.'</option>';	 
 					 } 
 					$output .= '</select></div>';
 				break;
@@ -207,20 +231,12 @@ class Options_Machine {
 						$output .= '<input type="checkbox" class="checkbox of-input" name="'.$value['id'].'['.$key.']'.'" id="'. $of_key_string .'" value="1" '. checked($multi_stored[$key], 1, false) .' /><label class="multicheck" for="'. $of_key_string .'">'. $option .'</label><br />';								
 					}			 
 				break;
-				/*
-				//colorpicker option
-				case 'color':		
-					$output .= '<div id="' . $value['id'] . '_picker" class="colorSelector"><div style="background-color: '.$smof_data[$value['id']].'"></div></div>';
-					$output .= '<input class="of-color" name="'.$value['id'].'" id="'. $value['id'] .'" type="text" value="'. $smof_data[$value['id']] .'" />';
-				break;
-				*/
-
+				
 				// Color picker
 				case "color":
 					$default_color = '';
 					if ( isset($value['std']) ) {
-						if ( $smof_data[$value['id']] !=  $value['std'] )
-							$default_color = ' data-default-color="' .$value['std'] . '" ';
+						$default_color = ' data-default-color="' .$value['std'] . '" ';
 					}
 					$output .= '<input name="' . $value['id'] . '" id="' . $value['id'] . '" class="of-color"  type="text" value="' . $smof_data[$value['id']] . '"' . $default_color .' />';
 		 	
@@ -388,11 +404,12 @@ class Options_Machine {
 					//custom icon
 					$icon = '';
 					if(isset($value['icon'])){
-						$icon = ' style="background: url('. $value['icon'] .') no-repeat 13px 10px;"';
+						$icon = ' style="background-image: url('. $value['icon'] .');"';
 					}
 					$header_class = str_replace(' ','',strtolower($value['name']));
 					$jquery_click_hook = str_replace(' ', '', strtolower($value['name']) );
-					$jquery_click_hook = "of-option-" . $jquery_click_hook;
+					$jquery_click_hook = "of-option-" . trim(preg_replace('/ +/', '', preg_replace('/[^A-Za-z0-9 ]/', '', urldecode(html_entity_decode(strip_tags($jquery_click_hook))))));
+					
 					$menu .= '<li class="'. $header_class .'"><a title="'.  $value['name'] .'" href="#'.  $jquery_click_hook  .'"'. $icon .'>'.  $value['name'] .'</a></li>';
 					$output .= '<div class="group" id="'. $jquery_click_hook  .'"><h2>'.$value['name'].'</h2>'."\n";
 				break;
@@ -422,39 +439,78 @@ class Options_Machine {
 				
 				//drag & drop block manager
 				case 'sorter':
-				
-					$sortlists = isset($smof_data[$value['id']]) && !empty($smof_data[$value['id']]) ? $smof_data[$value['id']] : $value['std'];
-					
-					$output .= '<div id="'.$value['id'].'" class="sorter">';
-					
-					
-					if ($sortlists) {
-					
-						foreach ($sortlists as $group=>$sortlist) {
-						
-							$output .= '<ul id="'.$value['id'].'_'.$group.'" class="sortlist_'.$value['id'].'">';
-							$output .= '<h3>'.$group.'</h3>';
-							
-							foreach ($sortlist as $key => $list) {
-							
-								$output .= '<input class="sorter-placebo" type="hidden" name="'.$value['id'].'['.$group.'][placebo]" value="placebo">';
-									
-								if ($key != "placebo") {
-								
-									$output .= '<li id="'.$key.'" class="sortee">';
-									$output .= '<input class="position" type="hidden" name="'.$value['id'].'['.$group.']['.$key.']" value="'.$list.'">';
-									$output .= $list;
-									$output .= '</li>';
-									
-								}
-								
-							}
-							
-							$output .= '</ul>';
-						}
+
+				    // Make sure to get list of all the default blocks first
+				    $all_blocks = $value['std'];
+
+				    $temp = array(); // holds default blocks
+				    $temp2 = array(); // holds saved blocks
+
+					foreach($all_blocks as $blocks) {
+					    $temp = array_merge($temp, $blocks);
 					}
-					
-					$output .= '</div>';
+
+				    $sortlists = isset($data[$value['id']]) && !empty($data[$value['id']]) ? $data[$value['id']] : $value['std'];
+
+				    foreach( $sortlists as $sortlist ) {
+					$temp2 = array_merge($temp2, $sortlist);
+				    }
+
+				    // now let's compare if we have anything missing
+				    foreach($temp as $k => $v) {
+					if(!array_key_exists($k, $temp2)) {
+					    $sortlists['disabled'][$k] = $v;
+					}
+				    }
+
+				    // now check if saved blocks has blocks not registered under default blocks
+				    foreach( $sortlists as $key => $sortlist ) {
+					foreach($sortlist as $k => $v) {
+					    if(!array_key_exists($k, $temp)) {
+						unset($sortlist[$k]);
+					    }
+					}
+					$sortlists[$key] = $sortlist;
+				    }
+
+				    // assuming all sync'ed, now get the correct naming for each block
+				    foreach( $sortlists as $key => $sortlist ) {
+					foreach($sortlist as $k => $v) {
+					    $sortlist[$k] = $temp[$k];
+					}
+					$sortlists[$key] = $sortlist;
+				    }
+
+				    $output .= '<div id="'.$value['id'].'" class="sorter">';
+
+
+				    if ($sortlists) {
+
+					foreach ($sortlists as $group=>$sortlist) {
+
+					    $output .= '<ul id="'.$value['id'].'_'.$group.'" class="sortlist_'.$value['id'].'">';
+					    $output .= '<h3>'.$group.'</h3>';
+
+					    foreach ($sortlist as $key => $list) {
+
+						$output .= '<input class="sorter-placebo" type="hidden" name="'.$value['id'].'['.$group.'][placebo]" value="placebo">';
+
+						if ($key != "placebo") {
+
+						    $output .= '<li id="'.$key.'" class="sortee">';
+						    $output .= '<input class="position" type="hidden" name="'.$value['id'].'['.$group.']['.$key.']" value="'.$list.'">';
+						    $output .= $list;
+						    $output .= '</li>';
+
+						}
+
+					    }
+
+					    $output .= '</ul>';
+					}
+				    }
+
+				    $output .= '</div>';
 				break;
 				
 				//background images option
@@ -532,8 +588,11 @@ class Options_Machine {
 					} else { 
 						$g_size = '';
 					}
+					$hide = " hide";
+					if ($smof_data[$value['id']] != "none" && $smof_data[$value['id']] != "")
+						$hide = "";
 					
-					$output .= '<p class="'.$value['id'].'_ggf_previewer google_font_preview" '. $g_size .'>'. $g_text .'</p>';
+					$output .= '<p class="'.$value['id'].'_ggf_previewer google_font_preview'.$hide.'" '. $g_size .'>'. $g_text .'</p>';
 				break;
 				
 				//JQuery UI Slider
@@ -637,7 +696,10 @@ class Options_Machine {
 					'output'	=> $output,
 					'value'		=> $value
 				));
-			$output .= $smof_output;
+			if ($smof_output != "") {
+				$output .= $smof_output;
+				$smof_output = "";
+			}
 			
 			//description of each option
 			if ( $value['type'] != 'heading') { 
@@ -651,6 +713,10 @@ class Options_Machine {
 			} /* condition empty end */
 		   
 		}
+
+		if ($update_data == true) {
+			of_save_options($smof_data);
+		}
 		
 	    $output .= '</div>';
 
@@ -663,7 +729,10 @@ class Options_Machine {
 					'output'		=> $output,
 					'value'			=> $value
 				));
-	    $output .= $smof_output;
+		if ($smof_output != "") {
+			$output .= $smof_output;
+			$smof_output = "";
+		}
 	    
 	    return array($output,$menu,$defaults);
 	    
@@ -686,7 +755,9 @@ class Options_Machine {
 	    $smof_data = of_get_options();
 		
 		$uploader = '';
-	    $upload = $smof_data[$id];
+		$upload = "";
+		if (isset($smof_data[$id]))
+	    	$upload = $smof_data[$id];
 		$hide = '';
 		
 		if ($mod == "min") {$hide ='hide';}
@@ -742,7 +813,8 @@ class Options_Machine {
 		
 		$slider = '';
 		$slide = array();
-	    $slide = $smof_data[$id];
+		if (isset($smof_data[$id]))
+	    	$slide = $smof_data[$id];
 		
 	    if (isset($slide[$oldorder])) { $val = $slide[$oldorder]; } else {$val = $std;}
 		
@@ -802,88 +874,6 @@ class Options_Machine {
 	
 		return $slider;
 		
-	}
-
-
-	/**
-	 * Media Uploader Using the WordPress Media Library.
-	 *
-	 * Parameters:
-	 * - string $_id - A token to identify this field (the name).
-	 * - string $_value - The value of the field, if present.
-	 * - string $_desc - An optional description of the field.
-	 *
-	 */
-
-	public static function optionsframework_uploader( $_id, $_value, $_name = '' ) {
-
-		$data = of_get_options();
-	    $smof_data = of_get_options();
-		
-	    $upload = $smof_data[$_id];
-		
-		
-	    if ( $upload != "") { $val = $upload; } else {$val = $_value;}
-	    
-
-		$output = '';
-		$id = '';
-		$class = '';
-		$int = '';
-		$value = '';
-		$name = '';
-		
-		$id = strip_tags( strtolower( $_id ) );
-		
-		// If a value is passed and we don't have a stored value, use the value that's passed through.
-		if ( $_value != '' && $value == '' ) {
-			$value = $_value;
-		}
-		
-		if ( $_name != '' ) {
-			$name = $_name;
-		}
-		else {
-			$name = $upload.'['.$id.']';
-		}
-		
-		if ( $value ) {
-			$class = ' has-file';
-		}
-		$output .= '<input id="' . $id . '" class="upload' . $class . '" type="text" name="'.$name.'" value="' . $value . '" placeholder="' . __('No file chosen', 'options_framework_theme') .'" />' . "\n";
-		if ( function_exists( 'wp_enqueue_media' ) ) {
-			if ( ( $value == '' ) ) {
-				$output .= '<span id="upload-' . $id . '" class="button media_upload_button">Upload</span>' . "\n";
-			} else {
-				$output .= '<span id="remove-' . $id . '" class="button remove-file">Remove</span>' . "\n";
-			}
-		} else {
-			$output .= '<p><i>' . __( 'Upgrade your version of WordPress for full media support.', 'options_framework_theme' ) . '</i></p>';
-		}
-		
-		$output .= '<div class="screenshot" id="' . $id . '-image">' . "\n";
-		
-		if ( $value != '' ) { 
-			$remove = '<a class="remove-image">Remove</a>';
-			$image = preg_match( '/(^.*\.jpg|jpeg|png|gif|ico*)/i', $value );
-			if ( $image ) {
-				$output .= '<img src="' . $value . '" alt="" />'.$remove.'';
-			} else {
-				$parts = explode( "/", $value );
-				for( $i = 0; $i < sizeof( $parts ); ++$i ) {
-					$title = $parts[$i];
-				}
-
-				// No output preview if it's not an image.			
-				$output .= '';
-			
-				// Standard generic output if it's not an image.	
-				$title = __( 'View File', 'options_framework_theme' );
-				$output .= '<div class="no-image"><span class="file_link"><a href="' . $value . '" target="_blank" rel="external">'.$title.'</a></span></div>';
-			}	
-		}
-		$output .= '</div>' . "\n";
-		return $output;
 	}
 
 	
