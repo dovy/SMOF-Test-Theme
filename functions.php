@@ -8,7 +8,6 @@ Just copy and paste the codes below into your own functions.php file.
 /**
  * Slightly Modified Options Framework
  */
-require_once ('admin/index.php');----*/
 require_once ('admin/index.php');
 
 /*-----------------------------------------------------------------------------------*/
